@@ -13,3 +13,6 @@ This app is written with C# and open Source; It's small app and run with .NET 4.
 
 #DirectorySizeCalculator Class
 ![DirectorySizeCalculator Class](https://raw.githubusercontent.com/ali33/DirectorySize/master/DirectorySizeCalculator.PNG)
+
+DirectorySize is Open Source software. You can redistribute and/or modify it under the terms of the GNU Public License, version 2 (GPLv2). 
+
