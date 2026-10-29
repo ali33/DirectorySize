@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- DirectorySize — Copyright (c) 2026 META.vn — Author: Nguyễn Đức Sơn — SPDX-License-Identifier: GPL-2.0-only -->
+<!-- Folder + rising bars = "size of directories". Amber fill shows on dark backgrounds, navy outline on light ones. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <title>DirectorySize</title>
+  <path d="M26 66a18 18 0 0 1 18-18h52l26 26h90a18 18 0 0 1 18 18v108a18 18 0 0 1-18 18H44a18 18 0 0 1-18-18z"
+        fill="#F6B01E" stroke="#14304F" stroke-width="14" stroke-linejoin="round"/>
+  <path d="M26 100h204" stroke="#14304F" stroke-width="10" stroke-opacity="0.35"/>
+  <g fill="#14304F">
+    <rect x="62"  y="164" width="36" height="38" rx="5"/>
+    <rect x="110" y="136" width="36" height="66" rx="5"/>
+    <rect x="158" y="108" width="36" height="94" rx="5"/>
+  </g>
+</svg>
