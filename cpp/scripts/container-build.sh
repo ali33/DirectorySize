@@ -15,16 +15,16 @@ build() {  # $1=dir  rest=extra cmake args
 
 case "$MODE" in
   test)
-    build /build -DCMAKE_BUILD_TYPE=Release
-    cd /build && ctest --output-on-failure
+    build /tmp/build -DCMAKE_BUILD_TYPE=Release
+    cd /tmp/build && ctest --output-on-failure
     ;;
   tsan)
-    build /build-tsan -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+    build /tmp/build-tsan -DCMAKE_BUILD_TYPE=RelWithDebInfo \
       -DCMAKE_CXX_FLAGS="-fsanitize=thread -g" -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread"
-    cd /build-tsan && ctest --output-on-failure
+    cd /tmp/build-tsan && ctest --output-on-failure
     ;;
   bench)
-    build /build -DCMAKE_BUILD_TYPE=Release
+    build /tmp/build -DCMAKE_BUILD_TYPE=Release
     T="${2:-/usr}"
     echo "== reference: find (regular files + symlinks, logical size)"
     TIMEFORMAT="find: %R s"; time find "$T" \( -type f -o -type l \) -printf '%s\n' | awk '{s+=$1} END{print "bytes=" s, "files=" NR}'
@@ -32,14 +32,17 @@ case "$MODE" in
     TIMEFORMAT="du: %R s"; time du -sb --apparent-size "$T" | tail -1
     for j in 1 2 4 8 16; do
       echo "== dirsize-cli -j $j"
-      for r in 1 2 3; do /build/dirsize-cli "$T" -t 1 -q -j "$j" 2>&1 | grep -E '^Xong'; done
+      for r in 1 2 3; do /tmp/build/dirsize-cli "$T" -t 1 -q -j "$j" --hardlinks all 2>&1 | grep -E '^Xong'; done
     done
+    echo "== hard links counted once (the Linux default); reference: unique (dev,inode) regular files via find"
+    find "$T" \( -type f -o -type l \) -printf '%D %i %s\n' | sort -u | awk '{s+=$3; n++} END{print "unique-inode bytes=" s, "files=" n}'
+    /tmp/build/dirsize-cli "$T" -t 1 -q --hardlinks once 2>&1 | grep -E '^Xong'
     ;;
   sigint)
-    build /build -DCMAKE_BUILD_TYPE=Release
+    build /tmp/build -DCMAKE_BUILD_TYPE=Release
     # Scan the whole container root (large), interrupt with SIGINT; expect exit 130 and a partial result.
     set +e
-    timeout --preserve-status -s INT 0.05 /build/dirsize-cli / -q -t 3
+    timeout --preserve-status -s INT 0.05 /tmp/build/dirsize-cli / -q -t 3
     rc=$?
     echo "exit code: $rc (expected 130)"
     [ "$rc" = 130 ]

@@ -47,6 +47,7 @@ dirsize-cli [đường_dẫn] [-t N] [-j N] [-i MS] [-x] [--api find|nt] [-q]
 | `-j, --threads N` | số luồng quét (mặc định: số nhân, tối đa 16) |
 | `-x, --one-file-system` | Linux: không vượt sang mount khác (như `du -x`) |
 | `--api find\|nt` | Windows: `FindFirstFileExW` hoặc `NtQueryDirectoryFile` (mặc định `nt`) |
+| `--hardlinks once\|all` | tệp nhiều hard link: tính một lần (mặc định Linux) hay mọi lần (mặc định Windows) |
 | `-q` | không in tiến độ |
 
 Ctrl+C (Windows: `SetConsoleCtrlHandler`; Linux: `SIGINT`/`SIGTERM`) dừng quét, in kết quả một phần, mã thoát 130.
@@ -99,6 +100,25 @@ Quyết định thiết kế (đều đã đo, xem số liệu trong báo cáo k
 - Không đi theo symlink, junction, mount point (Windows: thư mục reparse point). Linux: symlink được tính
   bằng kích thước của chính nó (như `du --apparent-size`), và đếm vào "liên kết bỏ qua".
 - Số "thư mục" ở đây là mọi thư mục đã gặp; bản C# chỉ đếm thư mục có chứa tệp.
+- Windows: chỉ bỏ qua symlink và junction/mount point; reparse point loại khác (OneDrive...) vẫn được quét.
+- Hard link (`--hardlinks once|all`): Linux mặc định tính một lần theo (st_dev, st_ino), chỉ tốn khi st_nlink > 1.
+  Windows mặc định tính mọi lần vì tính một lần phải lấy file id của mọi tệp: đo trên `C:\Windows\WinSxS`
+  (638 nghìn thư mục, 163 nghìn tệp) chậm hơn khoảng 12% (94 s so với 105 s, mỗi chế độ một lần đo, máy nhiễu);
+  trên `System32` không thấy khác biệt. Tệp có nhiều link được tính ở thư mục nào gặp trước.
+- Linux mở thư mục bằng `openat(dirfd, tên, O_NOFOLLOW)` nên không bị giới hạn `PATH_MAX` và không đi theo
+  symlink được tráo vào giữa chừng (có test với đường dẫn dài hơn 4096 ký tự). Windows dùng tiền tố `\\?\`
+  (và `\\.\` giữ nguyên) nên đường dẫn dài hơn 260 ký tự quét được (có test).
+- Kết quả "đã dừng" chỉ khi việc quét thực sự bị cắt giữa chừng; bấm dừng đúng lúc quét vừa xong vẫn là "hoàn tất".
+- Snapshot top-N được lấy lại từ bộ đệm khi cây không đổi và dùng lại bộ nhớ làm việc, nên cập nhật mỗi 500 ms
+  không cấp phát theo số thư mục.
+
+## Ghi chú toolchain
+
+MSYS2 g++ 15.2 (MinGW-w64, thread model posix): một chương trình thử 16 luồng dùng `thread_local std::vector` /
+`std::string` (có hàm huỷ) bị segfault 30/30 lần chạy ở cả ba kiểu liên kết: `-static`, `-static` kèm
+`-Wl,--whole-archive -lwinpthread -Wl,--no-whole-archive`, và liên kết động. `thread_local` kiểu trivial (mảng, số
+nguyên) chạy 30/30 lần ổn. Vì vậy mã không dùng `thread_local` có hàm huỷ (bộ đệm 64 KB nằm trên stack của worker).
+Cờ whole-archive không khôi phục được `thread_local` an toàn; nguyên nhân gốc chưa tìm ra.
 
 ## Linux
 

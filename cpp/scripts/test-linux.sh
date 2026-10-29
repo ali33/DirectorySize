@@ -15,4 +15,4 @@ docker build -q -f docker/Dockerfile.linux -t "$IMG" docker >/dev/null
 # MSYS_NO_PATHCONV stops Git Bash on Windows from mangling /src; pwd -W gives a Windows path there.
 export MSYS_NO_PATHCONV=1
 HERE="$(pwd -W 2>/dev/null || pwd)"
-docker run --rm --cap-add=SYS_PTRACE -v "$HERE:/src:ro" "$IMG" bash /src/scripts/container-build.sh "$MODE" "$@"
+docker run --rm --user 1000:1000 --cap-add=SYS_PTRACE -v "$HERE:/src:ro" "$IMG" bash /src/scripts/container-build.sh "$MODE" "$@"
