@@ -1,0 +1,39 @@
+// DirectorySize (C++) — Copyright (c) 2026 META.vn
+// Author: Nguyễn Đức Sơn
+// SPDX-License-Identifier: GPL-2.0-only
+#pragma code_page(65001)
+#include <winver.h>
+
+// Application icon: lowest ICON id, so Explorer/taskbar pick it. Shared with the C# app (assets/icon).
+1 ICON "dirsize.ico"
+
+1 24 "dirsize-gui.manifest"
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 1,0,0,0
+ PRODUCTVERSION 1,0,0,0
+ FILEFLAGSMASK 0x3fL
+ FILEFLAGS 0x0L
+ FILEOS VOS_NT_WINDOWS32
+ FILETYPE VFT_APP
+ FILESUBTYPE VFT2_UNKNOWN
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040904B0"
+    BEGIN
+      VALUE "CompanyName", "META.vn"
+      VALUE "FileDescription", "DirectorySize - tính dung lượng thư mục (giao diện)"
+      VALUE "FileVersion", "1.0.0.0"
+      VALUE "InternalName", "dirsize-gui"
+      VALUE "LegalCopyright", "Copyright © 2026 META.vn"
+      VALUE "OriginalFilename", "dirsize-gui.exe"
+      VALUE "ProductName", "DirectorySize (C++)"
+      VALUE "ProductVersion", "1.0.0.0"
+      VALUE "Comments", "Author: Nguyễn Đức Sơn"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x409, 1200
+  END
+END
