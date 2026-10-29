@@ -19,6 +19,8 @@ namespace DirectorySize
         public Form1()
         {
             InitializeComponent();
+            try { this.Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath); }
+            catch (Exception) { /* keep the default icon if the exe icon cannot be read */ }
         }
 
         private void btnChoseFolder_Click(object sender, EventArgs e)
