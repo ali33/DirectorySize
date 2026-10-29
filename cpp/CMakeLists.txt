@@ -75,6 +75,10 @@ if(WIN32)
   target_include_directories(dirsize-gui PRIVATE ${DIRSIZE_ICON_DIR})
   target_link_libraries(dirsize-gui PRIVATE dirsize_platform comctl32 ole32 uuid shell32)
   dirsize_static(dirsize-gui)
+  if(MSVC)
+    # The .rc already embeds our manifest; stop the linker adding a second one.
+    target_link_options(dirsize-gui PRIVATE /MANIFEST:NO)
+  endif()
 endif()
 
 # ---- Tests ------------------------------------------------------------------
