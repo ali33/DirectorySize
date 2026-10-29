@@ -96,6 +96,16 @@ static void test_inaccessible(const fs::path& base) {
   }
 #endif
   if (denied) {
+    // Some environments (elevated CI runners, CAP_DAC_OVERRIDE) list the directory anyway:
+    // then the permission cannot be enforced here and the check would test the environment.
+    std::error_code pec;
+    fs::directory_iterator probe(locked, pec);
+    if (!pec) {
+      std::printf("note: this environment still lists the denied directory: inaccessible test skipped\n");
+      denied = false;
+    }
+  }
+  if (denied) {
     for (const WalkOptions& o : option_sets()) {
       Run r = scan(root.u8string(), o);
       CHECK(r.root_ok);
