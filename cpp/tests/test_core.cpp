@@ -102,8 +102,60 @@ static void test_tree_concurrent() {
   CHECK_EQ(s.dirs, uint64_t{kThreads} * kDirs + 1);
 }
 
+// While workers keep writing, successive snapshots must never go backwards (totals,
+// files, directories), the parent never drops below a child, and the final snapshot
+// after the writers stop must be exact (the snapshot cache must not serve stale data).
+static void test_snapshot_monotonic() {
+  SizeTree t("/r", '/');
+  constexpr int kThreads = 6, kDirs = 6000;
+  std::atomic<bool> done{false};
+  std::atomic<int> violations{0};
+  std::thread snap([&] {
+    uint64_t last_total = 0, last_files = 0, last_dirs = 0;
+    while (!done.load()) {
+      SizeSnapshot s = t.snapshot(3);
+      if (s.total_bytes < last_total || s.files < last_files || s.dirs < last_dirs) ++violations;
+      for (const auto& e : s.top)
+        if (e.bytes > s.total_bytes) ++violations;  // a child larger than the root
+      if (!s.top.empty() && s.top[0].bytes != s.total_bytes) ++violations;  // root is always the largest
+      last_total = s.total_bytes;
+      last_files = s.files;
+      last_dirs = s.dirs;
+    }
+  });
+  std::vector<std::thread> th;
+  for (int i = 0; i < kThreads; ++i)
+    th.emplace_back([&] {
+      SizeTree::NodeId parent = SizeTree::kRoot;
+      for (int k = 0; k < kDirs; ++k) {
+        auto id = t.add_dir(k % 40 == 0 ? SizeTree::kRoot : parent, "d");
+        t.add_files(id, 2, 1);
+        parent = id;
+      }
+    });
+  for (auto& x : th) x.join();
+  done = true;
+  snap.join();
+  CHECK_EQ(violations.load(), 0);
+  SizeSnapshot a = t.snapshot(3);
+  CHECK_EQ(a.total_bytes, uint64_t{kThreads} * kDirs * 2);
+  CHECK_EQ(a.files, uint64_t{kThreads} * kDirs);
+  CHECK_EQ(a.dirs, uint64_t{kThreads} * kDirs + 1);
+  // Cache: unchanged tree gives the same answer; any change invalidates it.
+  SizeSnapshot b = t.snapshot(3);
+  CHECK_EQ(b.total_bytes, a.total_bytes);
+  t.add_files(SizeTree::kRoot, 5, 1);
+  CHECK_EQ(t.snapshot(3).total_bytes, a.total_bytes + 5);
+  auto n = t.add_dir(SizeTree::kRoot, "late");
+  CHECK_EQ(t.snapshot(3).dirs, a.dirs + 1);
+  t.add_files(n, 7, 1);
+  CHECK_EQ(t.snapshot(3).total_bytes, a.total_bytes + 12);
+  CHECK_EQ(t.snapshot(1).top.size(), size_t{1});  // different top_n is not served from the cache
+}
+
 int main() {
   test_format();
+  test_snapshot_monotonic();
   test_tree_basic();
   test_tree_drive_root_join();
   test_tree_concurrent();
