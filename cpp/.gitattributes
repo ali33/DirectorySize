@@ -1,0 +1,4 @@
+*.sh text eol=lf
+*.cpp text
+*.h text
+Dockerfile* text eol=lf
