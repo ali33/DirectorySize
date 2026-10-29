@@ -5,7 +5,7 @@
 #pragma once
 #include <string>
 
-#define DIRSIZE_VERSION "1.0.0"
+#define DIRSIZE_VERSION "1.0.1"
 #define DIRSIZE_PRODUCT "DirectorySize (C++)"
 #define DIRSIZE_COPYRIGHT "Copyright © 2026 META.vn"
 #define DIRSIZE_AUTHOR "Nguyễn Đức Sơn"
