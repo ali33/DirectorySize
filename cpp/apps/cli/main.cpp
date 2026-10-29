@@ -99,10 +99,19 @@ void usage() {
       "  -i, --interval MS    chu kỳ cập nhật tiến độ (mặc định 500)\n"
       "  -x, --one-file-system  không vượt sang mount khác (Linux)\n"
       "      --api find|nt    Windows: chọn API liệt kê (mặc định nt)\n"
+      "      --hardlinks once|all  tệp có nhiều hard link: tính một lần (mặc định Linux) hay mọi lần (mặc định Windows)\n"
       "  -q, --quiet          không in tiến độ\n"
       "  -h, --help           trợ giúp\n"
       "      --version        phiên bản, bản quyền, giấy phép\n"
       "Ctrl+C dừng quét và in kết quả một phần. Mã thoát: 0 xong, 1 lỗi, 2 sai tham số, 130 bị dừng.\n");
+}
+
+// Number of code points (one console column each for the scripts we print), not bytes.
+size_t display_width(const std::string& s) {
+  size_t n = 0;
+  for (unsigned char c : s)
+    if ((c & 0xC0) != 0x80) ++n;
+  return n;
 }
 
 std::string fmt_sec(std::chrono::milliseconds ms) {
@@ -167,6 +176,9 @@ int main(int argc, char** argv) {
       wo.one_file_system = true;
     } else if (a == "-q" || a == "--quiet") {
       quiet = true;
+    } else if (a == "--hardlinks") {
+      if (i + 1 >= args.size() || (args[i + 1] != "once" && args[i + 1] != "all")) { err("--hardlinks nhận once hoặc all\n"); return 2; }
+      wo.dedup_hardlinks = args[++i] == "once" ? 1 : 0;
     } else if (a == "--api") {
       if (i + 1 >= args.size() || (args[i + 1] != "find" && args[i + 1] != "nt")) { err("--api nhận find hoặc nt\n"); return 2; }
       wo.api = args[++i] == "find" ? ListApi::Find : ListApi::Nt;
@@ -214,8 +226,9 @@ int main(int argc, char** argv) {
     next_tick += std::chrono::milliseconds(interval);
     if (!quiet && tty && scanner.running()) {
       std::string l = progress_line(scanner.snapshot(0), scanner.elapsed());
-      std::string pad = l.size() < last_len ? std::string(last_len - l.size(), ' ') : "";
-      last_len = l.size();
+      size_t cols = display_width(l);  // columns, not UTF-8 bytes
+      std::string pad = cols < last_len ? std::string(last_len - cols, ' ') : "";
+      last_len = cols;
       err("\r" + l + pad);
     }
   }
@@ -231,7 +244,7 @@ int main(int argc, char** argv) {
   std::string o;
   for (const auto& d : s.top) {
     std::string sz = format_size(d.bytes);
-    o += std::string(sz.size() < 11 ? 11 - sz.size() : 0, ' ') + sz + "  " + d.path + "\n";
+    o += std::string(display_width(sz) < 11 ? 11 - display_width(sz) : 0, ' ') + sz + "  " + d.path + "\n";
   }
   o += "\n";
   o += (st == ScanState::Stopped ? "ĐÃ DỪNG (kết quả một phần): " : "Xong: ");
