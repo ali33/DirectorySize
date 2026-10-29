@@ -1,0 +1,152 @@
+# DirectorySize (C++) — Copyright (c) 2026 META.vn
+# Author: Nguyễn Đức Sơn
+# SPDX-License-Identifier: GPL-2.0-only
+name: cpp
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+    paths:
+      - 'cpp/**'
+      - 'assets/icon/**'
+      - '.github/workflows/cpp.yml'
+  pull_request:
+    branches: [master]
+    paths:
+      - 'cpp/**'
+      - 'assets/icon/**'
+      - '.github/workflows/cpp.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cpp-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-mingw:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: false
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+      - name: Configure
+        run: cmake -S cpp -B cpp/build -G Ninja -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build cpp/build
+      - name: Test
+        run: ctest --test-dir cpp/build --output-on-failure
+      - name: Smoke test CLI
+        run: |
+          cpp/build/dirsize-cli.exe --version
+          cpp/build/dirsize-cli.exe cpp/core --top 3
+      - name: Check executables have no MinGW DLL dependency
+        run: |
+          for exe in cpp/build/dirsize-cli.exe cpp/build/dirsize-gui.exe; do
+            echo "== $exe"
+            objdump -p "$exe" | grep "DLL Name" | sort -u
+            if objdump -p "$exe" | grep "DLL Name" | grep -iE 'libstdc\+\+|libgcc|libwinpthread'; then
+              echo "::error::$exe depends on a MinGW runtime DLL"; exit 1
+            fi
+          done
+      - name: Package
+        run: |
+          mkdir -p dist/dirsize-windows-x64
+          cp cpp/build/dirsize-cli.exe cpp/build/dirsize-gui.exe cpp/LICENSE cpp/README.md dist/dirsize-windows-x64/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dirsize-windows-x64
+          path: dist/dirsize-windows-x64
+          if-no-files-found: error
+
+  windows-msvc:
+    # Portability check only. Not exercised locally, so failures here do not block.
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S cpp -B cpp/build-msvc
+      - name: Build
+        run: cmake --build cpp/build-msvc --config Release
+      - name: Test
+        run: ctest --test-dir cpp/build-msvc -C Release --output-on-failure
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends g++ cmake ninja-build
+      - name: Configure
+        run: cmake -S cpp -B cpp/build -G Ninja -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build cpp/build
+      - name: Test
+        run: ctest --test-dir cpp/build --output-on-failure
+      - name: Compare with find on /usr
+        run: |
+          cpp/build/dirsize-cli --version
+          ours=$(cpp/build/dirsize-cli /usr -q -t 1 | grep -o '([0-9,]* byte)' | tr -d '(), byte')
+          ref=$(find /usr \( -type f -o -type l \) -printf '%s\n' | awk '{s+=$1} END{print s}')
+          echo "dirsize=$ours find=$ref"
+          du -sb --apparent-size /usr | tail -1
+          [ "$ours" = "$ref" ]
+      - name: Package
+        run: |
+          mkdir -p dist/stage/icons
+          cp cpp/build/dirsize-cli cpp/LICENSE cpp/README.md dist/stage/
+          cp assets/icon/dirsize.svg assets/icon/png/*.png dist/stage/icons/
+          tar -czf dist/dirsize-linux-x64.tar.gz -C dist/stage .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dirsize-linux-x64
+          path: dist/dirsize-linux-x64.tar.gz
+          if-no-files-found: error
+
+  linux-tsan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends g++ cmake ninja-build
+      - name: Build with ThreadSanitizer
+        run: |
+          cmake -S cpp -B cpp/build-tsan -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_CXX_FLAGS="-fsanitize=thread -g" -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread"
+          cmake --build cpp/build-tsan
+      - name: Test
+        run: ctest --test-dir cpp/build-tsan --output-on-failure
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows-mingw, linux, linux-tsan]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Zip Windows build
+        run: cd artifacts/dirsize-windows-x64 && zip -r ../dirsize-windows-x64.zip .
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            artifacts/dirsize-windows-x64.zip \
+            artifacts/dirsize-linux-x64/dirsize-linux-x64.tar.gz \
+            --repo "${{ github.repository }}" --title "DirectorySize (C++) ${{ github.ref_name }}" --generate-notes
