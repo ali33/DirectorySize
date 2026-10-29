@@ -14,6 +14,7 @@ namespace dirsize {
 
 struct WalkOutcome {
   bool root_ok = false;     // false: root missing / not a directory / unreadable
+  bool complete = true;     // false: the walk was cut short by the stop flag (result is partial)
   std::string root_error;   // UTF-8 message when !root_ok
 };
 
@@ -24,6 +25,10 @@ struct WalkOptions {
   unsigned threads = 0;           // 0 = pick a sensible default
   bool one_file_system = false;   // POSIX: do not cross mount points (du -x)
   ListApi api = ListApi::Default; // Windows: FindFirstFileExW or NtQueryDirectoryFile
+  // Count a file with several hard links only once. -1 = platform default
+  // (POSIX: on, it is nearly free; Windows: off, it needs the file id of every entry).
+  int dedup_hardlinks = -1;
+  bool ignore_d_type = false;     // POSIX test hook: stat every entry as if d_type were DT_UNKNOWN
 };
 
 class IDirWalker {

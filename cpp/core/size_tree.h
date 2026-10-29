@@ -64,8 +64,13 @@ class SizeTree {
   void note_inaccessible(const std::string& display_path, const std::string& reason);
   void note_skipped_link() { skipped_links_.fetch_add(1, std::memory_order_relaxed); }
 
-  // Cheap enough to call every few hundred ms while workers keep running.
+  // Cheap enough to call every few hundred ms while workers keep running:
+  // unchanged trees return a cached result, and the working buffers are reused
+  // between calls (no O(directories) allocation per call).
   SizeSnapshot snapshot(size_t top_n) const;
+
+  // Display path of a registered directory (rebuilt from parent/name links).
+  std::string path_of(NodeId id) const;
 
  private:
   struct Node {
@@ -91,6 +96,19 @@ class SizeTree {
   std::atomic<uint64_t> files_{0};
   std::atomic<uint64_t> inaccessible_{0};
   std::atomic<uint64_t> skipped_links_{0};
+  std::atomic<uint64_t> published_{0};  // nodes whose fields are fully written
+  uint64_t version() const {  // any mutation increases it (every writer bumps one of these last)
+    return count_.load(std::memory_order_acquire) + published_.load(std::memory_order_acquire) +
+           files_.load(std::memory_order_acquire) + inaccessible_.load(std::memory_order_acquire) +
+           skipped_links_.load(std::memory_order_acquire);
+  }
+  mutable std::mutex snap_mu_;  // guards the cache and the reusable buffers below
+  mutable std::vector<uint64_t> buf_total_;
+  mutable std::vector<uint8_t> buf_ok_;
+  mutable std::vector<uint32_t> buf_idx_;
+  mutable SizeSnapshot cache_;
+  mutable uint64_t cache_version_ = ~uint64_t{0};
+  mutable size_t cache_top_n_ = 0;
   mutable std::mutex err_mu_;
   std::vector<std::string> error_samples_;
 };

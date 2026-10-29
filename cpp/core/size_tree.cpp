@@ -19,6 +19,7 @@ SizeTree::SizeTree(std::string root_display, char sep) : root_display_(std::move
   r.name = root_display_;
   r.ready.store(true, std::memory_order_release);
   count_.store(1, std::memory_order_release);
+  published_.store(1, std::memory_order_release);
 }
 
 SizeTree::~SizeTree() {
@@ -39,27 +40,50 @@ SizeTree::NodeId SizeTree::add_dir(NodeId parent, const std::string& name) {
   n.parent = parent;
   n.name = name;
   n.ready.store(true, std::memory_order_release);
+  published_.fetch_add(1, std::memory_order_release);  // last: snapshot caches key off this
   return id;
 }
 
 void SizeTree::add_files(NodeId dir, uint64_t bytes, uint64_t file_count) {
-  files_.fetch_add(file_count, std::memory_order_relaxed);
+  // Bytes first, counter last: a reader that sees the new counter sees the bytes too.
   if (bytes) node(dir).own.fetch_add(bytes, std::memory_order_relaxed);
+  files_.fetch_add(file_count, std::memory_order_release);
 }
 
 void SizeTree::note_inaccessible(const std::string& display_path, const std::string& reason) {
-  inaccessible_.fetch_add(1, std::memory_order_relaxed);
-  std::lock_guard<std::mutex> lk(err_mu_);
-  if (error_samples_.size() < kMaxErrorSamples) error_samples_.push_back(display_path + ": " + reason);
+  {
+    std::lock_guard<std::mutex> lk(err_mu_);
+    if (error_samples_.size() < kMaxErrorSamples) error_samples_.push_back(display_path + ": " + reason);
+  }
+  inaccessible_.fetch_add(1, std::memory_order_release);
+}
+
+std::string SizeTree::path_of(NodeId id) const {
+  std::vector<uint32_t> chain;
+  for (uint32_t i = id; i != kRoot; i = node(i).parent) chain.push_back(i);
+  std::string p = node(0).name;
+  for (size_t q = chain.size(); q-- > 0;) {
+    if (!p.empty() && p.back() != sep_) p += sep_;
+    p += node(chain[q]).name;
+  }
+  return p;
 }
 
 SizeSnapshot SizeTree::snapshot(size_t top_n) const {
+  std::lock_guard<std::mutex> snap_lock(snap_mu_);
+  // Read the version BEFORE the data: every writer bumps its counter after
+  // writing, so data read now is at least as new as `ver`.
+  const uint64_t ver = version();
+  if (ver == cache_version_ && top_n == cache_top_n_) return cache_;
+
   SizeSnapshot s;
   const uint32_t n = count_.load(std::memory_order_acquire);
   // Not-yet-published nodes (id handed out, fields still being written) are
   // skipped; ids are only ever referenced as parents after being published.
-  std::vector<uint64_t> total(n);
-  std::vector<uint8_t> ok(n);
+  std::vector<uint64_t>& total = buf_total_;
+  std::vector<uint8_t>& ok = buf_ok_;
+  total.assign(n, 0);
+  ok.assign(n, 0);
   uint32_t live = 0;
   // Read flags from the highest id down: `ready` only ever flips false->true and a
   // child is created after its parent is published, so a ready child implies a
@@ -78,32 +102,28 @@ SizeSnapshot SizeTree::snapshot(size_t top_n) const {
     if (ok[i]) total[node(i).parent] += total[i];
 
   s.dirs = live;
-  s.files = files_.load(std::memory_order_relaxed);
+  s.files = files_.load(std::memory_order_acquire);
   s.total_bytes = total[0];
-  s.inaccessible = inaccessible_.load(std::memory_order_relaxed);
+  s.inaccessible = inaccessible_.load(std::memory_order_acquire);
   s.skipped_links = skipped_links_.load(std::memory_order_relaxed);
   {
     std::lock_guard<std::mutex> lk(err_mu_);
     s.error_samples = error_samples_;
   }
 
-  std::vector<uint32_t> idx;
+  std::vector<uint32_t>& idx = buf_idx_;
+  idx.clear();
   for (uint32_t i = 0; i < n; ++i)
     if (ok[i] && total[i] > 0) idx.push_back(i);
   auto cmp = [&](uint32_t a, uint32_t b) { return total[a] != total[b] ? total[a] > total[b] : a < b; };
   size_t k = std::min(top_n, idx.size());
   std::partial_sort(idx.begin(), idx.begin() + static_cast<std::ptrdiff_t>(k), idx.end(), cmp);
   s.top.reserve(k);
-  for (size_t j = 0; j < k; ++j) {
-    std::vector<uint32_t> chain;
-    for (uint32_t i = idx[j]; i != kRoot; i = node(i).parent) chain.push_back(i);
-    std::string p = node(0).name;
-    for (size_t q = chain.size(); q-- > 0;) {
-      if (!p.empty() && p.back() != sep_) p += sep_;
-      p += node(chain[q]).name;
-    }
-    s.top.push_back(DirEntryInfo{std::move(p), total[idx[j]]});
-  }
+  for (size_t j = 0; j < k; ++j) s.top.push_back(DirEntryInfo{path_of(idx[j]), total[idx[j]]});
+
+  cache_ = s;
+  cache_version_ = ver;
+  cache_top_n_ = top_n;
   return s;
 }
 

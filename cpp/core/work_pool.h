@@ -26,7 +26,8 @@ class WorkPool {
  public:
   using Fn = std::function<void(T& item, std::vector<T>& out)>;
 
-  static void run(unsigned threads, std::vector<T> initial, const std::atomic<bool>& stop, Fn fn) {
+  // Returns true when every queued item was processed (false: abandoned because of `stop`).
+  static bool run(unsigned threads, std::vector<T> initial, const std::atomic<bool>& stop, Fn fn) {
     if (threads == 0) threads = 1;
     State st{std::move(initial), stop, std::move(fn)};
     std::vector<std::thread> pool;
@@ -40,6 +41,7 @@ class WorkPool {
     worker(st);  // calling thread participates
     for (auto& t : pool) t.join();
     if (st.error) std::rethrow_exception(st.error);
+    return st.q.empty();
   }
 
  private:

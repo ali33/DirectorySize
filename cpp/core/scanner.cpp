@@ -42,8 +42,8 @@ bool Scanner::start(const std::string& root_utf8, FinishCallback on_finish, std:
         std::lock_guard<std::mutex> lk(mu_);
         error_ = o.root_error;
         end = ScanState::Failed;
-      } else if (stop_.load()) {
-        end = ScanState::Stopped;
+      } else if (!o.complete) {
+        end = ScanState::Stopped;  // cut short by the stop flag; a stop that arrives after the last directory is Finished
       }
     } catch (const std::exception& e) {
       std::lock_guard<std::mutex> lk(mu_);
