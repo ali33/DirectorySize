@@ -1,0 +1,14 @@
+# DirectorySize (C++) — Copyright (c) 2026 META.vn
+# Author: Nguyễn Đức Sơn
+# SPDX-License-Identifier: GPL-2.0-only
+# Build + test environment for the Linux port of dirsize.
+# Source is bind-mounted (read-only) at /src; build output goes to /build
+# inside the container, so nothing touches the Windows build tree.
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends g++ cmake ninja-build ca-certificates findutils coreutils gawk \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
