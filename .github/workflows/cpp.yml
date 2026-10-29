@@ -33,7 +33,7 @@ jobs:
       run:
         shell: msys2 {0}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
@@ -65,7 +65,7 @@ jobs:
         run: |
           mkdir -p dist/dirsize-windows-x64
           cp cpp/build/dirsize-cli.exe cpp/build/dirsize-gui.exe cpp/LICENSE cpp/README.md dist/dirsize-windows-x64/
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dirsize-windows-x64
           path: dist/dirsize-windows-x64
@@ -76,7 +76,7 @@ jobs:
     runs-on: windows-latest
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Configure
         run: cmake -S cpp -B cpp/build-msvc
       - name: Build
@@ -85,9 +85,9 @@ jobs:
         run: ctest --test-dir cpp/build-msvc -C Release --output-on-failure
 
   linux:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install tools
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends g++ cmake ninja-build
       - name: Configure
@@ -99,7 +99,7 @@ jobs:
       - name: Compare with find on /usr
         run: |
           cpp/build/dirsize-cli --version
-          ours=$(cpp/build/dirsize-cli /usr -q -t 1 | grep -o '([0-9,]* byte)' | tr -d '(), byte')
+          ours=$(cpp/build/dirsize-cli /usr -q -t 1 --hardlinks all | grep -o '([0-9,]* byte)' | tr -d '(), byte')
           ref=$(find /usr \( -type f -o -type l \) -printf '%s\n' | awk '{s+=$1} END{print s}')
           echo "dirsize=$ours find=$ref"
           du -sb --apparent-size /usr | tail -1
@@ -110,16 +110,16 @@ jobs:
           cp cpp/build/dirsize-cli cpp/LICENSE cpp/README.md dist/stage/
           cp assets/icon/dirsize.svg assets/icon/png/*.png dist/stage/icons/
           tar -czf dist/dirsize-linux-x64.tar.gz -C dist/stage .
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dirsize-linux-x64
           path: dist/dirsize-linux-x64.tar.gz
           if-no-files-found: error
 
   linux-tsan:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install tools
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends g++ cmake ninja-build
       - name: Build with ThreadSanitizer
@@ -133,11 +133,11 @@ jobs:
   release:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [windows-mingw, linux, linux-tsan]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
       - name: Zip Windows build
